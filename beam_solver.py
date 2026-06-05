@@ -2,6 +2,7 @@
 import numpy as np
 from math import pi
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 def build_matrix(n):
     A = np.zeros((n+1, n+1)) # matrice quadrata (n+1) × (n+1)
     coefficenti = [1, -4, 6, -4, 1] 
@@ -223,6 +224,9 @@ def soluzione_analitica(L, EJ, q, bc_left, bc_right, tipo_carico,supports):
     elif bc_left == "Incastro" and bc_right == "Libero":
         y_max = -q * L**4 / (8 * EJ)
         M_max = q * L**2 / 2
+    elif bc_left == "Libero" and bc_right == "Incastro":
+        y_max = -q * L**4 / (8 * EJ)
+        M_max = q * L**2 / 2
     elif bc_left == "Incastro" and bc_right == "Incastro":
         y_max = -q * L**4 / (384 * EJ)
         M_max = q * L**2 / 12
@@ -277,54 +281,236 @@ def reazioni_vincolari(T, M, bc_left, bc_right, supports, n):
     return reazioni
 
 def disegno_trave(L, bc_left, bc_right, supports, tipo_carico, n, direzione_carico):
-    fig, ax = plt.subplots(figsize=(10, 3)) 
+    import matplotlib.ticker as ticker
+    fig, ax = plt.subplots(figsize=(10, 3))
     
+    # tutto viene disegnato in coordinate 0-1 (normalizzate)
     # Trave
-    ax.plot([0, L], [0, 0], 'b-', linewidth=6)
+    ax.plot([0, 1], [0, 0], 'b-', linewidth=6)
     
-   # Carico distribuito
-    posizioni = np.linspace(0.1, L-0.1, 15)
-    for i, x in enumerate(posizioni):
+    # Carico distribuito
+    posizioni = np.linspace(0.01, 0.99, 15)
+    for i, x_norm in enumerate(posizioni):
+        x_reale = x_norm * L  # posizione reale in metri
         if tipo_carico == "Uniforme":
             altezza = 0.3
         elif tipo_carico == "Triangolare":
             if direzione_carico == "Sinistra → Destra":
-                altezza = 0.05 + 0.25 * (x / L)     # cresce da sinistra a destra
+                altezza = 0.05 + 0.25 * x_norm
             else:
-                altezza = 0.05 + 0.25 * (1 - x / L)  # specchiato  
+                altezza = 0.05 + 0.25 * (1 - x_norm)
         elif tipo_carico == "Mezza trave":
             if direzione_carico == "Sinistra → Destra":
-                altezza = 0.3 if x < L/2 else 0  # solo prima metà
+                altezza = 0.3 if x_norm < 0.5 else 0
             else:
-                altezza = 0.3 if x > L/2 else 0  # specchiato
-    
+                altezza = 0.3 if x_norm > 0.5 else 0
+        
         if altezza > 0:
-            ax.annotate('', xy=(x, 0), xytext=(x, altezza),
+            ax.annotate('', xy=(x_norm, 0), xytext=(x_norm, altezza),
                         arrowprops=dict(arrowstyle='->', color='red'))
-            
-    ax.text(L/2, 0.45, f'q = {tipo_carico}', ha='center', color='red')
+    
+    ax.text(0.5, 0.45, f'q = {tipo_carico}', ha='center', color='red')
     
     # Vincolo sinistro
     if bc_left == "Appoggio":
         ax.plot([0], [-0.1], 'k^', markersize=15)
     elif bc_left == "Incastro":
-        ax.fill_betweenx([-0.2, 0.2], -0.2, 0, color='gray')
+        ax.fill_betweenx([-0.2, 0.2], -0.05, 0, color='gray')
     
     # Vincolo destro
     if bc_right == "Appoggio":
-        ax.plot([L], [-0.1], 'k^', markersize=15)
+        ax.plot([1], [-0.1], 'k^', markersize=15)
     elif bc_right == "Incastro":
-        ax.fill_betweenx([-0.2, 0.2], L, L+0.2, color='gray')
+        ax.fill_betweenx([-0.2, 0.2], 1, 1.05, color='gray')
     
-    # Appoggi interni
-    h = L / n
+    # Appoggi interni (normalizzati)
     for k in supports:
-        x_int = k * h
-        ax.plot([x_int], [-0.1], 'k^', markersize=15)
+        x_norm = k / n
+        ax.plot([x_norm], [-0.1], 'k^', markersize=15)
     
-    ax.set_xlim(-0.3, L+0.3)
+    # asse x con valori reali in metri
+    ax.set_xlim(-0.05, 1.05)
     ax.set_ylim(-0.4, 0.6)
-    ax.axis('off')
     ax.set_title("Schema della trave")
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.yaxis.set_visible(False)
+    ax.spines['bottom'].set_position(('data', -0.25))
+    ax.set_xlabel("x (m)")
     
+    # etichette asse x in metri reali
+    if L <= 5:
+        passo = 0.5
+    elif L <= 20:
+        passo = 2
+    elif L <= 90:
+        passo = 5
+    else:
+        passo = 10
+    
+    tick_reali = np.arange(0, L + passo, passo)
+    tick_norm = tick_reali / L  # converti in coordinate normalizzate
+    tick_norm = tick_norm[tick_norm <= 1]  # rimuovi valori oltre 1
+    tick_reali = tick_reali[:len(tick_norm)]
+    
+    ax.set_xticks(tick_norm)
+    ax.set_xticklabels([f"{v:.1f}" for v in tick_reali])
+    
+    return fig 
+def disegno_sezione(sezione, params):
+    fig, ax = plt.subplots(figsize=(4, 4))
+    
+    if sezione == "Quadrato pieno":
+        H = params["H"]
+        ax.add_patch(plt.Rectangle((-H/2, -H/2), H, H, color='lightblue', ec='black', linewidth=2))
+        ax.set_xlim(-H, H)
+        ax.set_ylim(-H, H)
+        # quote
+        ax.annotate('', xy=(H/2, -H/2 - H*0.15), xytext=(-H/2, -H/2 - H*0.15),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(0, -H/2 - H*0.25, f'H = {H} m', ha='center', fontsize=8)
+        ax.annotate('', xy=(H/2 + H*0.15, H/2), xytext=(H/2 + H*0.15, -H/2),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(H/2 + H*0.18, 0, f'H = {H} m', ha='left', fontsize=8)
+
+    elif sezione == "Quadrato cavo":
+        H = params["H"]
+        h = params["h"]
+        ax.add_patch(plt.Rectangle((-H/2, -H/2), H, H, color='lightblue', ec='black', linewidth=2))
+        ax.add_patch(plt.Rectangle((-h/2, -h/2), h, h, color='white', ec='black', linewidth=2))
+        ax.set_xlim(-H, H)
+        ax.set_ylim(-H, H)
+        # quote
+        ax.annotate('', xy=(H/2, -H/2 - H*0.15), xytext=(-H/2, -H/2 - H*0.15),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(0, -H/2 - H*0.25, f'H = {H} m', ha='center', fontsize=8)
+        ax.annotate('', xy=(H/2 + H*0.15, H/2), xytext=(H/2 + H*0.15, -H/2),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(H/2 + H*0.18, 0, f'H = {H} m', ha='left', fontsize=8)
+        ax.annotate('', xy=(h/2, -h/2 - H*0.05), xytext=(-h/2, -h/2 - H*0.05),
+                    arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(0, -h/2 - H*0.12, f'h = {h} m', ha='center', fontsize=8, color='gray')
+
+    elif sezione == "Rettangolo pieno":
+        B = params["B"]
+        H = params["H"]
+        ax.add_patch(plt.Rectangle((-B/2, -H/2), B, H, color='lightblue', ec='black', linewidth=2))
+        ax.set_xlim(-B, B)
+        ax.set_ylim(-H, H)
+        # quote
+        ax.annotate('', xy=(B/2, -H/2 - H*0.1), xytext=(-B/2, -H/2 - H*0.1),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(0, -H/2 - H*0.2, f'B = {B} m', ha='center', fontsize=8)
+        ax.annotate('', xy=(B/2 + B*0.15, H/2), xytext=(B/2 + B*0.15, -H/2),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(B/2 + B*0.18, 0, f'H = {H} m', ha='left', fontsize=8)
+
+    elif sezione == "Rettangolo cavo":
+        B = params["B"]
+        H = params["H"]
+        b = params["b"]
+        h = params["h"]
+        ax.add_patch(plt.Rectangle((-B/2, -H/2), B, H, color='lightblue', ec='black', linewidth=2))
+        ax.add_patch(plt.Rectangle((-b/2, -h/2), b, h, color='white', ec='black', linewidth=2))
+        ax.set_xlim(-B, B)
+        ax.set_ylim(-H, H)
+        # quote
+        ax.annotate('', xy=(B/2, -H/2 - H*0.1), xytext=(-B/2, -H/2 - H*0.1),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(0, -H/2 - H*0.2, f'B = {B} m', ha='center', fontsize=8)
+        ax.annotate('', xy=(B/2 + B*0.15, H/2), xytext=(B/2 + B*0.15, -H/2),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(B/2 + B*0.18, 0, f'H = {H} m', ha='left', fontsize=8) 
+        ax.annotate('', xy=(0, h/2), xytext=(0, -h/2),
+            arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(0, 0, f'h = {h} m', ha='center', va='center', fontsize=7, color='gray') 
+        ax.annotate('', xy=(b/2, -H/2 + H*0.05), xytext=(-b/2, -H/2 + H*0.05),
+                    arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(0, -H/2 - H*0.05, f'b = {b} m', ha='center', fontsize=7, color='gray')
+
+    elif sezione == "Cerchio pieno":
+        D = params["D"]
+        ax.add_patch(plt.Circle((0, 0), D/2, color='lightblue', ec='black', linewidth=2))
+        ax.set_xlim(-D, D)
+        ax.set_ylim(-D, D)
+        # quota diametro
+        ax.annotate('', xy=(D/2, -D*0.6), xytext=(-D/2, -D*0.6),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(0, -D*0.75, f'D = {D} m', ha='center', fontsize=8)
+
+    elif sezione == "Cerchio cavo":
+        D = params["D"]
+        d = params["d"]
+        ax.add_patch(plt.Circle((0, 0), D/2, color='lightblue', ec='black', linewidth=2))
+        ax.add_patch(plt.Circle((0, 0), d/2, color='white', ec='black', linewidth=2))
+        ax.set_xlim(-D, D)
+        ax.set_ylim(-D, D)
+        # quote
+        ax.annotate('', xy=(D/2, -D*0.6), xytext=(-D/2, -D*0.6),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(0, -D*0.75, f'D = {D} m', ha='center', fontsize=8)
+        ax.annotate('', xy=(d/2, 0), xytext=(-d/2, 0),
+            arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(0, -D*0.15, f'd = {d} m', ha='center', fontsize=8, color='gray')
+
+    elif sezione == "Figura L":
+        B = params["B"]
+        H = params["H"]
+        b = params["b"]
+        h = params["h"]
+        c = params["c"]
+        d = params["d"]
+        ax.add_patch(plt.Rectangle((0, 0), c, H, color='lightblue', ec='black', linewidth=2))
+        ax.add_patch(plt.Rectangle((0, 0), B, d, color='lightblue', ec='black', linewidth=2))
+        ax.set_xlim(-B*0.3, B*1.8)
+        ax.set_ylim(-H*0.3, H*1.3)
+        # quota B
+        ax.annotate('', xy=(B, -H*0.15), xytext=(0, -H*0.15),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(B/2, -H*0.22, f'B = {B} m', ha='center', fontsize=8)
+        # quota H
+        ax.annotate('', xy=(-B*0.15, H), xytext=(-B*0.15, 0),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(-B*0.17, H/2, f'H = {H} m', ha='right', fontsize=8)
+        # quota d
+        ax.annotate('', xy=(B*1.3, d), xytext=(B*1.3, 0),
+                    arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(B*1.33, d/2, f'd = {d} m', ha='left', fontsize=8, color='gray')
+        # quota c
+        ax.annotate('', xy=(c, H*1.15), xytext=(0, H*1.15),
+                    arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(c/2, H*1.22, f'c = {c} m', ha='center', fontsize=8, color='gray')
+
+    elif sezione == "Figura T rovesciata":
+        B = params["B"]
+        H = params["H"]
+        b = params["b"]
+        h = params["h"]
+        c = params["c"]
+        d = params["d"]
+        ax.add_patch(plt.Rectangle((-c/2, 0), c, H, color='lightblue', ec='black', linewidth=2))
+        ax.add_patch(plt.Rectangle((-B/2, 0), B, d, color='lightblue', ec='black', linewidth=2))
+        ax.set_xlim(-B*0.8, B*1.2)
+        ax.set_ylim(-H*0.3, H*1.3)
+        # quota B
+        ax.annotate('', xy=(B/2, -H*0.15), xytext=(-B/2, -H*0.15),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(0, -H*0.22, f'B = {B} m', ha='center', fontsize=8)
+        # quota H
+        ax.annotate('', xy=(B*0.8, H), xytext=(B*0.8, 0),
+                    arrowprops=dict(arrowstyle='<->', color='black'))
+        ax.text(B*0.82, H/2, f'H = {H} m', ha='left', fontsize=8)
+        # quota d
+        ax.annotate('', xy=(B*1.0, d), xytext=(B*1.0, 0),
+                    arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(B*1.02, d/2, f'd = {d} m', ha='left', fontsize=8, color='gray')
+        # quota c
+        ax.annotate('', xy=(c/2, H*1.15), xytext=(-c/2, H*1.15),
+                    arrowprops=dict(arrowstyle='<->', color='gray'))
+        ax.text(0, H*1.22, f'c = {c} m', ha='center', fontsize=8, color='gray')
+
+    ax.set_aspect('equal')
+    ax.axis('off')
+    ax.set_title(f"Sezione: {sezione}")
     return fig

@@ -2,7 +2,7 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
-from beam_solver import calcola_J, solve_beam, soluzione_analitica, tabella_convergenza, reazioni_vincolari, disegno_trave
+from beam_solver import calcola_J, solve_beam, soluzione_analitica, tabella_convergenza, reazioni_vincolari, disegno_trave, disegno_sezione
 st.title("Risolutore linea elastica")  
 st.set_page_config(layout="wide")
 col1, col2 = st.columns([1, 2])
@@ -85,6 +85,8 @@ with col1:
     E = st.number_input("Modulo di Young E (N/m²)", value=2e11)
 
     if sezione != "Nessuna (inserisci EJ manualmente)":
+        fig_sez = disegno_sezione(sezione, params)
+        st.pyplot(fig_sez)
         J = calcola_J(sezione, params)
         EJ = E * J
         st.write(f"J calcolato: {J:.6e} m⁴")
@@ -104,7 +106,12 @@ if st.button("Calcola"):
         if bc_left == "Libero" and bc_right == "Libero":
             st.error("La trave non può essere libera su entrambi gli estremi!")
             st.stop()
-        
+        if L <= 0:
+            st.error("La lunghezza della trave deve essere maggiore di zero!")
+            st.stop()
+        if EJ <= 0:
+            st.error("EJ deve essere maggiore di zero!")
+            st.stop()
         #calcolo 
         x, y, M, T = solve_beam(L, EJ, n, q, bc_left, bc_right, direzione_carico , supports=supports,  tipo_carico=tipo_carico)
         
@@ -150,7 +157,7 @@ if st.button("Calcola"):
         st.write(f"Taglio massimo: {max(abs(T)):.2f} N")
         risultato_analitico = None
         if tipo_carico == "Uniforme":
-            risultato_analitico = soluzione_analitica(L, EJ, q, bc_left, bc_right, tipo_carico, supports=[])
+            risultato_analitico = soluzione_analitica(L, EJ, q, bc_left, bc_right, tipo_carico, supports)
 
         if risultato_analitico is not None:
             y_analitico, M_analitico = risultato_analitico
